@@ -8,8 +8,6 @@ import meraki
 app = Flask(__name__)
 app.secret_key = 'any random string'
 
-base_url = 'https://api.meraki.com/api/v1/'
-
 
 ###########################################################################
 #  Prompt user to choose an org from a list of orgs attached to the API key
@@ -32,7 +30,7 @@ def get_org():
 ###########################################################################
 #  Prompt user to choose an network from a list of networks in this org
 ###########################################################################
-@app.route('/network/')    
+@app.route('/network/')
 def get_network():
 
     api_key = request.cookies.get('api_key')
@@ -154,7 +152,6 @@ def newpolicy():
     network_id = session['netid']
     db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
 
-
     try:
         newpolicy = db.networks.createNetworkGroupPolicy(networkId=network_id, name=policyname)
     except Exception as e:
@@ -170,7 +167,7 @@ def newpolicy():
 ###########################################################################
 #  LIST ACL and Select ACE Action (Delete, Replace, Insert)
 ###########################################################################
-@app.route('/ace/')    
+@app.route('/ace/')
 def list_aces():
 
     api_key = request.cookies.get('api_key')
@@ -288,7 +285,7 @@ def deleteconfirm():
     return render_template('deleteconfirm.html', policyname=session['policyname'], network = session['network'])
 
 
-@app.route('/deleteacl/')    
+@app.route('/deleteacl/')
 def deleteacl():
 
     api_key = request.cookies.get('api_key')
@@ -320,7 +317,7 @@ def getapikey():
 ###########################################################################
 #  Read and set Meraki API Key
 ###########################################################################
-@app.route('/setapikey')
+@app.route('/setapikey/')
 def setapikey():
 
     resp = make_response(redirect(url_for('get_org')))
@@ -332,7 +329,7 @@ def setapikey():
 ###########################################################################
 #  Copies or updates policy to all networks or all networks matching tag
 ###########################################################################
-@app.route('/bulkcopy')
+@app.route('/bulkcopy/')
 def bulk_copy():
 
     api_key = request.cookies.get('api_key')
@@ -344,7 +341,7 @@ def bulk_copy():
     tag = request.args.get('tag')
     networks = db.organizations.getOrganizationNetworks(organizationId=session['orgid'])
     policy = db.networks.getNetworkGroupPolicy(networkId=network_id, groupPolicyId=acl)
-    updated = f'<a href="acl">Return</a><br><br>\n' \
+    updated = f'<a href="/ace">Return</a><br><br>\n' \
               f'Policy updated to:<br>\n<ul>\n'
     added = f'</ul>\nPolicy added to:<br>\n<ul>\n'
     errors = f'</ul>\nErrors encountered with:<br>\n<ul>\n'
