@@ -1,4 +1,4 @@
 flask
 markupsafe
-requests>=2.25.0
+requests
 meraki

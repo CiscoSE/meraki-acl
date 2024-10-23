@@ -8,9 +8,10 @@ This web app can view and edit L3 ACL's in a Meraki Network group policy.  The p
 - Delete entire Group Policy
 - Create new Group Policy
 - Duplicate Group Policy from another network
+- Bulk copy Group Policy to all networks or to networks with a specific tag
 
 ## Requirements
-Written in Python 3.7 using Flask templates.  Make sure you have the necessary libraries noted in requirements.txt.  Execute using "python3 main.py"
+Written in Python 3.10 using Flask templates.  Make sure you have the necessary libraries noted in requirements.txt.  Execute using "python3 main.py"
 Also tested and works as a cloud native app on Google Cloud Platform.
 
 NOTE: The API key user must have full access to the organization to list networks.  If you do not have proper authorization the Meraki API returns a 404 error.  If your use case requires limited access to a specific network, you'll need to modify this script appropriately.
