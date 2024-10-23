@@ -1,187 +1,145 @@
-# [START gae_python38_app]
-from flask import Flask, request, make_response, render_template, redirect, url_for, session, Markup
-import requests
-import json
+#!python3
+# [START gae_python310_app]
+from flask import Flask, request, make_response, render_template, redirect, url_for, session
+from markupsafe import Markup
+import meraki
+
 
 app = Flask(__name__)
 app.secret_key = 'any random string'
 
 base_url = 'https://api.meraki.com/api/v1/'
 
+
 ###########################################################################
 #  Prompt user to choose an org from a list of orgs attached to the API key
 ###########################################################################
 @app.route('/org/')
-def Organization():
+def get_org():
 
     api_key = request.cookies.get('api_key')
-    if api_key == None:
+    if api_key is None:
         return redirect(url_for('getapikey'))
-    url = base_url + "organizations"
-    headers = {
-      'X-Cisco-Meraki-API-Key': api_key
-    }
-    try:
-        response = requests.request("GET", url, headers=headers)
-        response.raise_for_status()
-    except:
-        return 'ERROR CODE: <br>'+str(response.status_code) + '<br><br>ERROR DETAILS: ' + str(response.text)
-    orgs = json.loads(response.text)
-
-    listorgs = ''
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+    orgs = db.organizations.getOrganizations()
+    list_orgs = ''
     for org in orgs:
-        listorgs += '<option value = "{}">{}</option>\n'.format(org['id'] ,org['name'])
+        list_orgs += f'<option value = "{org["id"]}">{org["name"]}</option>\n'
 
-    return render_template('listorgs.html', listorgs=Markup(listorgs))
+    return render_template('listorgs.html', listorgs=Markup(list_orgs))
 
 
 ###########################################################################
 #  Prompt user to choose an network from a list of networks in this org
 ###########################################################################
 @app.route('/network/')    
-def Network():
+def get_network():
 
     api_key = request.cookies.get('api_key')
-    if api_key == None:
+    if api_key is None:
         return redirect(url_for('getapikey'))
-    org = request.args.get('org')
-    if org == None:
-        org = session['orgid']
-    headers = {
-      'X-Cisco-Meraki-API-Key': api_key
-    }
-
-    url = "{}organizations/{}".format(base_url, org)
-
-    try:
-        response = requests.request("GET", url, headers=headers)
-        response.raise_for_status()
-    except:
-        return 'ERROR CODE: <br>'+str(response.status_code) + '<br><br>ERROR DETAILS: ' + str(response.text)
-    jorg = json.loads(response.text)
-    session['org'] = jorg['name']
-    session['orgid'] = org
-
-    url = "{}organizations/{}/networks".format(base_url, org)
-    networks = json.loads(requests.request("GET", url, headers=headers).text)
-
-    listnetworks = ''
+    organization_id = request.args.get('org') or session['orgid']
+    session['orgid'] = organization_id
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+    org_name = db.organizations.getOrganization(organizationId=organization_id)['name']
+    session['org'] = org_name
+    networks = db.organizations.getOrganizationNetworks(organizationId=organization_id)
+    list_networks = ''
     for network in networks:
-        listnetworks += '<option value = "{}">{}</option>\n'.format(network['id'], network['name'])
+        list_networks += f'<option value = "{network["id"]}">{network["name"]}</option>\n'
 
-    return render_template('listnetworks.html', org = jorg['name'], listnetworks = Markup(listnetworks))
+    return render_template('listnetworks.html', org=org_name, listnetworks=Markup(list_networks))
+
 
 ###########################################################################
 #  Prompt user to choose an ACL from this network
 ###########################################################################
-@app.route('/acl/')    
-def ACL():
+@app.route('/acl/')
+def list_acls():
 
     api_key = request.cookies.get('api_key')
-    if api_key == None:
+    if api_key is None:
         return redirect(url_for('getapikey'))
-
-    network = request.args.get('network')
-    if network == None:
-        network = session['netid']
-    headers = {
-      'X-Cisco-Meraki-API-Key': api_key
-    }
-
-    url = base_url + "networks/{}".format(network)
-    jnetwork = json.loads(requests.request("GET", url, headers=headers).text)
-    session['network'] = jnetwork['name']
-    session['netid'] = network
-
-    url = base_url + "networks/{}/groupPolicies".format(network)
-    policies = json.loads(requests.request("GET", url, headers=headers).text)
-
-    n = 0
-    listpolicies = ''
+    network_id = request.args.get('network') or session['netid']
+    session['netid'] = network_id
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+    policies = db.networks.getNetworkGroupPolicies(networkId=network_id)
+    list_policies = ''
     for policy in policies:
-        listpolicies += '<option value = "{}">{}</option>\n'.format(policy['groupPolicyId'], policy['name'])
-        n += 1
-
-    url = "{}organizations/{}/networks".format(base_url, session['orgid'])
-    networks = json.loads(requests.request("GET", url, headers=headers).text)
-
-    listnetworks = ''
+        list_policies += f'<option value = "{policy["groupPolicyId"]}">{policy["name"]}</option>\n'
+    organization_id = request.args.get('org') or session['orgid']
+    network_name = db.networks.getNetwork(networkId=network_id)['name']
+    session['network'] = network_name
+    networks = db.organizations.getOrganizationNetworks(organizationId=organization_id)
+    list_networks = ''
     for network in networks:
-        listnetworks += '<option value = "{}">{}</option>\n'.format(network['id'], network['name'])
+        list_networks += f'<option value = "{network["id"]}">{network["name"]}</option>\n'
 
     session['lastaclaction'] = 'Select an action below:'
 
-    return render_template('listpolicies.html', org = session['org'], network = session['network'],
-                            orgid = session['orgid'], listpolicies = Markup(listpolicies),
-                            listnetworks = Markup(listnetworks))
+    return render_template('listpolicies.html', org=session['org'], network=network_name,
+                            orgid=session['orgid'], listpolicies=Markup(list_policies),
+                            listnetworks=Markup(list_networks))
+
 
 ###########################################################################
 #  Prompt user to choose a Group Policy to duplicate from another network
 ###########################################################################
-@app.route('/copyacl/')    
+@app.route('/copyacl/')
 def copyacl():
 
     api_key = request.cookies.get('api_key')
-    if api_key == None:
+    if api_key is None:
         return redirect(url_for('getapikey'))
-
-    sourcenet = request.args.get('sourcenet')
-    headers = {
-      'X-Cisco-Meraki-API-Key': api_key
-    }
-
-    url = base_url + "networks/{}".format(sourcenet)
-    jnetwork = json.loads(requests.request("GET", url, headers=headers).text)
-
-    url = base_url + "networks/{}/groupPolicies".format(sourcenet)
-    policies = json.loads(requests.request("GET", url, headers=headers).text)
-
-    n = 0
-    listpolicies = ''
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+    source_net = request.args.get('sourcenet')
+    network_name = db.networks.getNetwork(networkId=source_net)['name']
+    policies = db.networks.getNetworkGroupPolicies(networkId=source_net)
+    list_policies = ''
     for policy in policies:
-        listpolicies += '<option value = "{}">{}</option>\n'.format(policy['groupPolicyId'], policy['name'])
-        n += 1
+        list_policies += f'<option value = "{policy["groupPolicyId"]}">{policy["name"]}</option>\n'
 
-    return render_template('copypolicy.html', network = jnetwork['name'],
-                            listpolicies = Markup(listpolicies), sourcenet = sourcenet)
+    return render_template('copypolicy.html', network=network_name,
+                            listpolicies=Markup(list_policies), sourcenet=source_net)
+
 
 ###########################################################################
 #  Apply copied policy
 ###########################################################################
 @app.route('/applycopy/')
 def applycopy():
+
     api_key = request.cookies.get('api_key')
-    if api_key == None:
-        api_key = 'not set'
-
-    network = session['netid']
-    sourcenet = request.args.get('sourcenet')
+    if api_key is None:
+        return redirect(url_for('getapikey'))
+    network_id = session['netid']
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+    source_net = request.args.get('sourcenet')
     acl = request.args.get('acl')
-    aclname = request.args.get('aclname')
+    acl_name = request.args.get('aclname')
+    network_name = db.networks.getNetwork(networkId=source_net)['name']
+    policy = db.networks.getNetworkGroupPolicy(networkId=source_net, groupPolicyId=acl)
 
-    url = base_url + "networks/{}/groupPolicies/{}".format(sourcenet,acl)
-    headers = {
-      'X-Cisco-Meraki-API-Key': api_key,
-      'Content-Type': 'application/json'
-    }
-    policy = json.loads(requests.request("GET", url, headers=headers).text)
-
-    policy.pop('groupPolicyId')
-    if aclname not in ('',None):
-        policy['name'] = aclname
-
-    url = base_url + "networks/{}/groupPolicies".format(network)
+    if acl_name in ('', None):
+        acl_name = policy['name']
     try:
-        newpolicy = requests.post(url, headers=headers, data = json.dumps(policy))
-        newpolicy.raise_for_status()
-    except:
-        return "POST Error: " + str(newpolicy.status_code) + "<br><br>Error Details: " + str(newpolicy.text) + \
-                            "<br><br>Policy pushed: " + str(policy)
-    session['acl'] = json.loads(newpolicy.text)['groupPolicyId']
+        new_policy = db.networks.createNetworkGroupPolicy(networkId=network_id, name=acl_name,
+                                                          scheduling=policy['scheduling'],
+                                                          bandwidth=policy['bandwidth'],
+                                                          firewallAndTrafficShaping=policy['firewallAndTrafficShaping'],
+                                                          contentFiltering=policy['contentFiltering'],
+                                                          splashAuthSettings=policy['splashAuthSettings'],
+                                                          vlanTagging=policy['vlanTagging'],
+                                                          bonjourForwarding=policy['bonjourForwarding'])
+    except Exception as e:
+        return Markup(f"<h1>Error:</h1>{e}")
 
-    resp = make_response(redirect(url_for('ACE')))
+    session['acl'] = new_policy['groupPolicyId']
+    session['lastaclaction'] = f'<p style="color:red;"><b>Copied Policy from {network_name}.</b></p>'
+    resp = make_response(redirect(url_for('list_aces')))
 
     return resp
+
 
 ###########################################################################
 #  Create a new Group Policy
@@ -190,68 +148,60 @@ def applycopy():
 def newpolicy():
 
     policyname = request.args.get('newpolicy')
+    api_key = request.cookies.get('api_key')
+    if api_key is None:
+        return redirect(url_for('getapikey'))
+    network_id = session['netid']
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
 
-    url = base_url + "networks/{}/groupPolicies".format(session['netid'])
-    headers = {
-      'X-Cisco-Meraki-API-Key': request.cookies.get('api_key'),
-      'Content-Type': 'application/json'
-    }
-    payload = {
-        "name": policyname,
-        "firewallAndTrafficShaping": {
-            "settings": "custom"
-        }
-    }
 
     try:
-        newpolicy = requests.post(url, headers=headers, data=json.dumps(payload))
-        newpolicy.raise_for_status()
-    except:
-        return "POST Error: " + str(newpolicy.status_code) + "<br><br>Error Details: " + str(newpolicy.text) + \
-                            "<br><br>Policy pushed: " + str(payload)
+        newpolicy = db.networks.createNetworkGroupPolicy(networkId=network_id, name=policyname)
+    except Exception as e:
+        return Markup(f"<h1>Error:</h1>{e}")
 
-    session['acl'] = json.loads(newpolicy.text)['groupPolicyId']
+    session['acl'] = newpolicy['groupPolicyId']
     session['lastaclaction'] = '<b>Created new policy with blank ACL.</b>'
-    resp = make_response(redirect(url_for('ACE')))
+    resp = make_response(redirect(url_for('list_aces')))
 
     return resp
+
 
 ###########################################################################
 #  LIST ACL and Select ACE Action (Delete, Replace, Insert)
 ###########################################################################
 @app.route('/ace/')    
-def ACE():
+def list_aces():
 
     api_key = request.cookies.get('api_key')
-    if api_key == None:
+    if api_key is None:
         return redirect(url_for('getapikey'))
-    acl = request.args.get('acl')
-    if acl == None:
-        acl = str(session['acl'])
-    else:
-        session['acl'] = acl
-
-    network = session['netid']
-
-    url = base_url + "networks/{}/groupPolicies/{}".format(network,acl)
-    headers = {
-      'X-Cisco-Meraki-API-Key': api_key
-    }
-
-    policy = json.loads(requests.request("GET", url, headers=headers).text)
+    acl = request.args.get('acl') or str(session['acl'])
+    session['acl'] = acl
+    network_id = session['netid']
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+    policy = db.networks.getNetworkGroupPolicy(networkId=network_id, groupPolicyId=acl)
     session['policyname'] = policy['name']
-
-    acltable = ''
-    n = 0
-    for ace in policy['firewallAndTrafficShaping']['l3FirewallRules']:
-        acltable += '<td><input type="radio" name="ace" value = "{}"></td><th>{}</th>'.format(n,n+1)
+    acl_table = ''
+    for n, ace in enumerate(policy['firewallAndTrafficShaping']['l3FirewallRules']):
+        acl_table += f'<td><input type="radio" name="ace" value = "{n}"></td><th>{n+1}</th>'
         for var in ace.values():
-            acltable += '<td>{}</td>'.format(var)
-        acltable += '</tr>\n'
-        n += 1
+            acl_table += f'<td>{var}</td>'
+        acl_table += '</tr>\n'
 
-    return render_template('listacl.html', acl=policy['name'] , lastaclaction = Markup(session['lastaclaction']),
-                             acltable=Markup(acltable), org = session['org'], network = session['network'])
+    networks = db.organizations.getOrganizationNetworks(organizationId=session['orgid'])
+    tags = []
+    for n in networks:
+        for t in n['tags']:
+            tags.append(t)
+    tag_list = '<option value=""></option>\n'
+    for tag in set(tags):
+        tag_list += f'<option value = "{tag}">{tag}</option>\n'
+
+    return render_template('listacl.html', acl=policy['name'], lastaclaction=Markup(session['lastaclaction']),
+                           acltable=Markup(acl_table), org=session['org'], network=session['network'],
+                           tag_list=Markup(tag_list))
+
 
 ###########################################################################
 #  Edit (Delete, Replace, Insert) ACL Entry
@@ -260,101 +210,99 @@ def ACE():
 def editace():
 
     api_key = request.cookies.get('api_key')
-    if api_key == None:
+    if api_key is None:
         return redirect(url_for('getapikey'))
-
-    network = session['netid']
     acl = session['acl']
     ace = request.args.get('ace')
     if ace in ('', None):
         session['lastaclaction'] = '<p style="color:red;">You must select an ACL line</p>'
-        resp = make_response(redirect(url_for('ACE')))
+        resp = make_response(redirect(url_for('list_aces')))
         return resp
-    aclaction = int(request.args.get('aclaction'))
+    network_id = session['netid']
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+    policy = db.networks.getNetworkGroupPolicy(networkId=network_id, groupPolicyId=acl)
+    session['policyname'] = policy['name']
 
-    url = base_url + "networks/{}/groupPolicies/{}".format(network,acl)
-
-    headers = {
-      'X-Cisco-Meraki-API-Key': api_key,
-      'Content-Type': 'application/json'
-    }
-    policy = json.loads(requests.request("GET", url, headers=headers).text)
-
-    if aclaction in (1,2,3):
+    acl_action = int(request.args.get('aclaction'))
+    if acl_action in (1, 2, 3):
         comment = request.args.get('comment')
-        if comment == None:
+        if comment is None:
             comment = ''
-        destPort = request.args.get('port')
+        dest_port = request.args.get('port')
         protocol = request.args.get('protocol')
-        if destPort in ('any','Any','') or protocol == 'icmp':
-            destPort = 'Any'
-        else:
-            destPort = int(destPort)
+        if dest_port in ('any', 'Any', '') or protocol == 'icmp':
+            dest_port = 'Any'
         dest = request.args.get('dest')
         if dest == '':
             dest = 'Any'
-        aceline = {'comment': comment, 'policy': request.args.get('action'), 'protocol': protocol,
-            'destPort': destPort, 'destCidr': dest}
+        ace_line = {'comment': comment, 'policy': request.args.get('action'), 'protocol': protocol,
+            'destPort': dest_port, 'destCidr': dest}
 
-    if aclaction == 0:
-        ##### Delete ACE #####
+    if acl_action == 0:
+        # Delete ACE #####
         if ace == 'last':
             session['lastaclaction'] = '<p style="color:red">Cannot delete implicit ALLOW ANY rule</p>'
         else:
-            session['lastaclaction'] = 'Deleted line {}: {}'.format(int(ace)+1,policy['firewallAndTrafficShaping']['l3FirewallRules'].pop(int(ace)))
+            session['lastaclaction'] = f'Deleted line {int(ace)+1}: ' \
+                                       f'{policy["firewallAndTrafficShaping"]["l3FirewallRules"].pop(int(ace))}'
 
-    elif aclaction == 1:
-        ##### Replace ACE #####
+    elif acl_action == 1:
+        # Replace ACE #####
         if ace == 'last':
             session['lastaclaction'] = '<p style="color:red">Cannot edit implicit ALLOW ANY rule</p>'
         else:
-            policy['firewallAndTrafficShaping']['l3FirewallRules'][int(ace)] = aceline
-            session['lastaclaction'] = 'Line {} modified: '.format(int(ace)+1) + str(aceline)
+            policy['firewallAndTrafficShaping']['l3FirewallRules'][int(ace)] = ace_line
+            session['lastaclaction'] = f'Line {int(ace)+1} modified: {ace_line}'
 
-    elif aclaction == 2:
-        ##### Insert ACE above line #####
+    elif acl_action == 2:
+        # Insert ACE above line #####
         if ace == 'last':
             ace = len(policy['firewallAndTrafficShaping']['l3FirewallRules'])
-        policy['firewallAndTrafficShaping']['l3FirewallRules'].insert(int(ace),aceline)
-        session['lastaclaction'] = 'Inserted line {}: '.format(int(ace)+1) + str(aceline)
+        policy['firewallAndTrafficShaping']['l3FirewallRules'].insert(int(ace), ace_line)
+        session['lastaclaction'] = f'Inserted line {int(ace)+1}: {ace_line}'
 
-    elif aclaction == 3:
-        ##### Insert ACE below line #####
+    elif acl_action == 3:
+        # Insert ACE below line #####
         if ace == 'last':
             session['lastaclaction'] = 'Cannot insert a line below the implicit ALLOW ANY rule'
         else:
-            policy['firewallAndTrafficShaping']['l3FirewallRules'].insert(int(ace)+1,aceline)
-            session['lastaclaction'] = 'Inserted line {}: '.format(int(ace)+2) + str(aceline)
+            policy['firewallAndTrafficShaping']['l3FirewallRules'].insert(int(ace)+1, ace_line)
+            session['lastaclaction'] = f'Inserted line {int(ace)+2}: {ace_line}'
 
-    policyid = policy.pop('groupPolicyId')
-    url = base_url + "networks/{}/groupPolicies/{}".format(network, policyid)
-    requests.put(url, headers=headers, data = json.dumps(policy))
+    policy['firewallAndTrafficShaping']['settings'] = 'custom'
+    policy_id = policy.pop('groupPolicyId')
+    test = db.networks.updateNetworkGroupPolicy(networkId=network_id, groupPolicyId=policy_id,
+                                                firewallAndTrafficShaping=policy['firewallAndTrafficShaping'])
 
-    resp = make_response(redirect(url_for('ACE')))
+    resp = make_response(redirect(url_for('list_aces')))
 
     return resp
+
 
 ###########################################################################
 #  Confirm Policy Deletion & Perform Deletion
 ###########################################################################
-@app.route('/deleteconfirm/')    
+@app.route('/deleteconfirm/')
 def deleteconfirm():
 
     return render_template('deleteconfirm.html', policyname=session['policyname'], network = session['network'])
 
+
 @app.route('/deleteacl/')    
 def deleteacl():
 
-    url = base_url + "networks/{}/groupPolicies/{}".format(session['netid'],session['acl'])
-    headers = {
-      'X-Cisco-Meraki-API-Key': request.cookies.get('api_key'),
-      'Content-Type': 'application/json'
-    }
-    requests.request("DELETE", url, headers=headers)
+    api_key = request.cookies.get('api_key')
+    if api_key is None:
+        return redirect(url_for('getapikey'))
+    acl = session['acl']
+    network_id = session['netid']
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+    db.networks.deleteNetworkGroupPolicy(networkId=network_id, groupPolicyId=acl)
 
-    resp = make_response(redirect(url_for('ACL')))
+    resp = make_response(redirect(url_for('list_acls')))
 
     return resp
+
 
 ###########################################################################
 #  Prompt user for Meraki API key
@@ -362,11 +310,12 @@ def deleteacl():
 @app.route('/')
 def getapikey():
     api_key = request.cookies.get('api_key')
-    if api_key == None:
+    if api_key is None:
         api_key = 'not set'
     else:
-    	api_key = '**************************' + api_key[-5:]
-    return render_template('setapikey.html', api_key = api_key)
+        api_key = '**************************' + api_key[-5:]
+    return render_template('setapikey.html', api_key=api_key)
+
 
 ###########################################################################
 #  Read and set Meraki API Key
@@ -374,10 +323,75 @@ def getapikey():
 @app.route('/setapikey')
 def setapikey():
 
-    resp = make_response(redirect(url_for('Organization')))
-    resp.set_cookie('api_key', request.args.get('api_key'))
+    resp = make_response(redirect(url_for('get_org')))
+    resp.set_cookie('api_key', request.args.get("api_key"))
 
     return resp
+
+
+###########################################################################
+#  Copies or updates policy to all networks or all networks matching tag
+###########################################################################
+@app.route('/bulkcopy')
+def bulk_copy():
+
+    api_key = request.cookies.get('api_key')
+    if api_key is None:
+        return redirect(url_for('getapikey'))
+    acl = session['acl']
+    network_id = session['netid']
+    db = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+    tag = request.args.get('tag')
+    networks = db.organizations.getOrganizationNetworks(organizationId=session['orgid'])
+    policy = db.networks.getNetworkGroupPolicy(networkId=network_id, groupPolicyId=acl)
+    updated = f'<a href="acl">Return</a><br><br>\n' \
+              f'Policy updated to:<br>\n<ul>\n'
+    added = f'</ul>\nPolicy added to:<br>\n<ul>\n'
+    errors = f'</ul>\nErrors encountered with:<br>\n<ul>\n'
+
+    for network in networks:
+        if network['id'] == network_id:
+            continue
+        if (tag in network['tags']) or (tag in ('', None)):
+            policies = db.networks.getNetworkGroupPolicies(networkId=network['id'])
+            policy_id = None
+            for target_policy in policies:
+                if target_policy['name'] == policy['name']:
+                    policy_id = target_policy['groupPolicyId']
+                    break
+            if policy_id:
+                try:
+                    new_policy = \
+                        db.networks.updateNetworkGroupPolicy(networkId=network['id'],
+                                                             groupPolicyId=policy_id,
+                                                             scheduling=policy['scheduling'],
+                                                             bandwidth=policy['bandwidth'],
+                                                             firewallAndTrafficShaping=policy['firewallAndTrafficShaping'],
+                                                             contentFiltering=policy['contentFiltering'],
+                                                             splashAuthSettings=policy['splashAuthSettings'],
+                                                             vlanTagging=policy['vlanTagging'],
+                                                             bonjourForwarding=policy['bonjourForwarding'])
+                    updated += f'<li>{network["name"]}\n'
+                except Exception as e:
+                    errors += f'<li>{network["name"]} - {e}'
+            else:
+                try:
+                    new_policy =\
+                        db.networks.createNetworkGroupPolicy(networkId=network['id'],
+                                                             name=policy['name'],
+                                                             scheduling=policy['scheduling'],
+                                                             bandwidth=policy['bandwidth'],
+                                                             firewallAndTrafficShaping=policy['firewallAndTrafficShaping'],
+                                                             contentFiltering=policy['contentFiltering'],
+                                                             splashAuthSettings=policy['splashAuthSettings'],
+                                                             vlanTagging=policy['vlanTagging'],
+                                                             bonjourForwarding=policy['bonjourForwarding'])
+                    added += f'<li>{network["name"]}\n'
+                except Exception as e:
+                    errors += f'<li>{network["name"]} - {e}'
+    content = f'{updated}{added}{errors}</ul>'
+    return Markup(content)
+
 
 if __name__ == '__main__':
     # This is used when running locally only. When deploying to Google App
