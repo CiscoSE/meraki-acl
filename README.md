@@ -1,4 +1,4 @@
-# Meraki ACL Editor
+# Meraki Group Policy L3 ACL Edit & Copy
 
 ## Overview
 This web app can view, edit, create and copy L3 ACL's in a Meraki Network Group Policy.
@@ -37,9 +37,13 @@ Create virtual environment.  Install requirements.
 
 For testing purposes, the web app can be run directly.
 For production use, recommend installing on a production web server (Apache, gunicorn, GCP, etc.).
+The app.yaml and .gcloudignore files are included for GCP AppEngine.
 > python3 main.py
 
-Testing webserver will be running at http://localhost:8080
+Testing webserver will be run at http://127.0.0.1:8080
+
+You will be prompted for your API key which you can generate on the Meraki dashboard under Organization > API & Webhooks > 
+API keys and access.
 
 ## Author
 This project was developed by:
